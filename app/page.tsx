@@ -1,101 +1,197 @@
-import Image from "next/image";
+'use client'
+
+import { FFmpeg } from '@ffmpeg/ffmpeg'
+import { fetchFile, toBlobURL } from '@ffmpeg/util'
+import { ChangeEvent, useRef, useState } from 'react'
+
+const supportedTypes = ["image/jpg", "image/jpeg", "image/png", "image/gif", "image/bmp", "image/x-icon", "image/tiff"];
+const conversionFormats = ["jpg", "jpeg", "png", "gif", "bmp", "ico", "tif", "tiff"];
+
+type FileWithFormat = {
+  file: File;
+  format: string;
+};
+
+
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [loaded, setLoaded] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const [fileList, setFileList] = useState<FileWithFormat[]>([]);
+  const [isConverting, setIsConverting] = useState(false);
+
+  const ffmpegRef = useRef(new FFmpeg())
+  const ffmpeg = ffmpegRef.current
+
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files ? event.target.files[0] : null;
+    if (file && supportedTypes.includes(file.type)) {
+      setFileList((prevList) => [
+        ...prevList,
+        { file, format: conversionFormats[0] },
+      ]);
+    } else {
+      alert("Por favor, selecione um arquivo de imagem válido.");
+    }
+  };
+
+  const handleFormatChange = (index: number, newFormat: string) => {
+    setFileList((prevList) =>
+      prevList.map((item, i) =>
+        i === index ? { ...item, format: newFormat } : item
+      )
+    );
+  };
+
+
+  const load = async () => {
+    setIsLoading(true)
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
+    const ffmpeg = ffmpegRef.current
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm')
+    })
+    setLoaded(true)
+    setIsLoading(false)
+  }
+
+  const handleConvert = async () => {      
+    
+    setIsConverting(true);
+
+    for (const fileItem of fileList) {
+      const { file, format } = fileItem;
+      const fileName = file.name.split(".")[0];
+      const inputPath = file.name;
+      const outputPath = `${fileName}.${format}`;
+
+      ffmpeg.writeFile( inputPath, await fetchFile(file));
+
+      await ffmpeg.exec(["-i", inputPath, outputPath]);
+
+      const data = (await ffmpeg.readFile(outputPath)) as any
+
+      const url = URL.createObjectURL(new Blob([data.buffer], { type: `image/${format}` }));
+
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = outputPath;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    }
+
+    setIsConverting(false);
+  };
+
+
+  return (
+    <div className="grid  items-center justify-items-center mt-20">
+      <div className="flex flex-col justify-center align-middle items-center">
+        <h1 className="text-2xl">Conversor de Imagens</h1>
+        <p>Este conversor foi desenvolvido como trabalho final da disciplina de <strong>Sistemas Multimídia</strong>.</p>
+        <p>É uma implementação da biblioteca FFmpeg para conversão de imagens </p>
+      </div>
+
+
+
+{!loaded ? (
+  <button
+      className="fixed top-[50%] left-[50%] translate-x-[-50%] translate-y-[-50%] flex items-center bg-blue-500 hover:bg-blue-700 text-white py-2 px-4 rounded"
+      onClick={load}
+      >
+      Iniciar
+      {isLoading && (
+        <span className="animate-spin ml-3">
+          <svg
+            viewBox="0 0 1024 1024"
+            focusable="false"
+            data-icon="loading"
+            width="1em"
+            height="1em"
+            fill="currentColor"
+            aria-hidden="true"
+            >
+            <path d="M988 548c-19.9 0-36-16.1-36-36 0-59.4-11.6-117-34.6-171.3a440.45 440.45 0 00-94.3-139.9 437.71 437.71 0 00-139.9-94.3C629 83.6 571.4 72 512 72c-19.9 0-36-16.1-36-36s16.1-36 36-36c69.1 0 136.2 13.5 199.3 40.3C772.3 66 827 103 874 150c47 47 83.9 101.8 109.7 162.7 26.7 63.1 40.2 130.2 40.2 199.3.1 19.9-16 36-35.9 36z"></path>
+          </svg>
+        </span>
+      )}
+    </button>):(
+<div className="p-4">
+      <label
+        htmlFor="fileInput"
+        className="px-4 py-2 text-white bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600"
+      >
+        Selecione um arquivo
+      </label>
+      <input
+        id="fileInput"
+        type="file"
+        className="hidden"
+        accept={supportedTypes.join(",")}
+        
+        onChange={handleFileChange}
+      />
+
+      {fileList.length > 0 && (
+        <div className="mt-4">
+          <div className="flex justify-around  p-2 border-b border-gray-700 text-white">
+            <span className='px-5'>  Nome do arquivo  </span>
+            <span className='px-5'>  Converter Para   </span>
+          </div>
+          {fileList.map((fileItem, index) => (
+            <div key={index} className="flex justify-around items-center p-2 border-b border-gray-700">
+              <span className="text-white">{fileItem.file.name}</span>
+              <select
+                className="bg-gray-800 text-white p-1 rounded"
+                value={fileItem.format}
+                onChange={(e) => handleFormatChange(index, e.target.value)}
+              >
+                {conversionFormats.map((format) => (
+                  <option key={format} value={format}>
+                    {format}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
+
+      {fileList.length > 0 && (
+        <div className="flex justify-center mt-4">
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500"
+            onClick={handleConvert}
+            disabled={isConverting}
+          >
+            {isConverting ? "Convertendo..." : "Converter"}
+          </button>
+        </div>
+      )}
+    </div>
+    )}
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     </div>
   );
 }
